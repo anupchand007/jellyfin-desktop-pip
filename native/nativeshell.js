@@ -310,6 +310,17 @@ window.initCompleted = new Promise(async (resolve) => {
     });
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
+    // Minimal PiP OSD: tag <html> with .jmp-pip while the host window is in
+    // PiP so injected CSS can strip the cramped desktop OSD (see bottom of file).
+    installPipStyles();
+    const applyPipClass = (enabled) => {
+        document.documentElement.classList.toggle('jmp-pip', !!enabled);
+    };
+    if (window.api.window.pipModeChanged) {
+        window.api.window.pipModeChanged.connect(applyPipClass);
+    }
+    applyPipClass(window.api.window.pipMode);
+
     resolve();
 });
 
@@ -593,3 +604,61 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         }
     }
 });
+
+
+// ---------------------------------------------------------------------------
+// Minimal PiP OSD styles (active only while <html> has .jmp-pip)
+// ---------------------------------------------------------------------------
+function installPipStyles() {
+    if (document.getElementById('jmp-pip-style')) return;
+    const style = document.createElement('style');
+    style.id = 'jmp-pip-style';
+    style.textContent = `
+/* Hide everything that clutters a small window */
+.jmp-pip .skinHeader,
+.jmp-pip .osdTitle, .jmp-pip .osdSecondaryText, .jmp-pip .osdTextContainer,
+.jmp-pip .osdMediaInfo, .jmp-pip .osdPoster, .jmp-pip .endsAtText,
+.jmp-pip .osdTimeText, .jmp-pip .osdPositionText, .jmp-pip .osdDurationText,
+.jmp-pip .btnSubtitles, .jmp-pip .btnAudio, .jmp-pip .btnVideoOsdSettings,
+.jmp-pip .btnFullscreen, .jmp-pip .btnAirPlay, .jmp-pip .btnCast,
+.jmp-pip .btnPreviousTrack, .jmp-pip .btnNextTrack,
+.jmp-pip .btnPreviousChapter, .jmp-pip .btnNextChapter,
+.jmp-pip .osdVolumeSliderContainer, .jmp-pip .btnMute, .jmp-pip .volumeButtons,
+.jmp-pip .chapterThumbContainer, .jmp-pip .sliderBubble {
+    display: none !important;
+}
+
+/* Thin progress line along the bottom */
+.jmp-pip .videoOsdBottom {
+    background: linear-gradient(transparent, rgba(0,0,0,.55)) !important;
+    padding: 0 6px 4px !important;
+    transition: opacity .2s ease !important;
+}
+.jmp-pip .sliderContainer, .jmp-pip .osdPositionSliderContainer { margin: 0 !important; }
+
+/* Centred, roomy control row: rewind / play / forward / exit-PiP */
+.jmp-pip .osdControls .buttons {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 18px !important;
+    width: 100% !important;
+}
+.jmp-pip .osdControls .buttons .paper-icon-button-light {
+    font-size: 1.5em !important;
+    margin: 0 !important;
+    padding: .25em !important;
+}
+
+/* Controls only visible on hover */
+.jmp-pip body.mouseIdle .videoOsdBottom,
+.jmp-pip .videoOsdBottom.videoOsdBottom-hidden { opacity: 0 !important; }
+
+/* Very small window: buttons only */
+@media (max-width: 340px) {
+    .jmp-pip .osdPositionSliderContainer, .jmp-pip .sliderContainer { display: none !important; }
+    .jmp-pip .osdControls .buttons { gap: 8px !important; }
+}
+`;
+    document.head.appendChild(style);
+}

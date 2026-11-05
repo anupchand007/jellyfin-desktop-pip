@@ -12,6 +12,9 @@
 #include <QEvent>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QTimer>
 #include <QDebug>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -306,7 +309,9 @@ Qt::Edges WindowManager::pipEdgesAt(const QPoint& localPos) const
   if (!m_window)
     return {};
 
-  const int grip = 8;
+  // Generous grip zone: Chromium steals hover near edges, so 8px was nearly
+  // impossible to grab. 14px gives a reliable target without eating video.
+  const int grip = 14;
   Qt::Edges edges;
 
   if (localPos.x() < grip)
@@ -350,6 +355,45 @@ bool WindowManager::eventFilter(QObject* watched, QEvent* event)
       }
     }
 #endif
+
+    // PiP wheel-to-scale: scroll up/down over the PiP window to grow/shrink it,
+    // locked to the video aspect ratio and anchored at the window centre.
+    if (m_pip.active && event->type() == QEvent::Wheel)
+    {
+      auto* we = static_cast<QWheelEvent*>(event);
+      int steps = we->angleDelta().y() / 120;
+      if (steps == 0)
+        steps = (we->angleDelta().y() > 0) ? 1 : (we->angleDelta().y() < 0 ? -1 : 0);
+      if (steps != 0 && m_pip.aspectRatio > 0)
+      {
+        QRect geo = m_window->geometry();
+        int newWidth = qRound(geo.width() * (1.0 + 0.08 * steps));
+
+        int maxWidth = 1920;
+        if (QScreen* screen = findCurrentScreen())
+          maxWidth = qRound(screen->availableGeometry().width() * 0.9);
+        newWidth = qBound(240, newWidth, maxWidth);
+        int newHeight = qRound(newWidth / m_pip.aspectRatio);
+
+        QPoint c = geo.center();
+        m_pip.enforcingAspect = true;
+        m_window->setGeometry(QRect(c.x() - newWidth / 2, c.y() - newHeight / 2, newWidth, newHeight));
+        m_pip.enforcingAspect = false;
+      }
+      return true;
+    }
+
+    // PiP double-click: return to the normal full window.
+    if (m_pip.active && event->type() == QEvent::MouseButtonDblClick)
+    {
+      auto* me = static_cast<QMouseEvent*>(event);
+      if (me->button() == Qt::LeftButton && !pipEdgesAt(me->position().toPoint()))
+      {
+        m_pip.pressEvent.reset();
+        QTimer::singleShot(0, this, [this]() { setPiPMode(false); });
+        return true;
+      }
+    }
 
     // PiP drag-to-move: click anywhere and drag to reposition the window.
     // Press is consumed to prevent the web UI from toggling play/pause.

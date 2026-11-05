@@ -16,7 +16,7 @@
 #define WEBUI_MAX_HEIGHT 1440.0
 #define WEBUI_SIZE QSize(1280, 720)
 #define WINDOWW_MIN_SIZE QSize(213, 120)
-#define PIP_SIZE QSize(400, 225)
+#define PIP_SIZE QSize(480, 270)
 
 class WindowManager : public ComponentBase
 {
